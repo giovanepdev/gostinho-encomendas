@@ -15,9 +15,9 @@ marca o restante como pago e cadastra os produtos com foto. Não tem **nenhuma**
 
 1. **Netlify grátis = 300 créditos/mês com limite rígido.** Se estourar, o site para até o mês virar.
    **Cada publicação (deploy) custa 15 créditos.** Teste tudo no seu PC e só publique quando estiver pronto.
-2. **O Supabase grátis pausa o projeto depois de ~1 semana sem uso do banco.** A rota `/api/cron/manter-ativo`
-   faz uma consulta mínima; ela precisa ser chamada uma vez por dia (na Netlify, com uma *Scheduled Function*)
-   enviando o header `Authorization: Bearer <CRON_SECRET>`.
+2. **O Supabase grátis pausa o projeto depois de ~1 semana sem uso do banco.** A tarefa agendada
+   `netlify/functions/manter-ativo.mts` faz uma consulta mínima por dia para evitar isso (só roda no site publicado;
+   para testar, use "Run now" na Netlify).
 3. **Pix direto não tem confirmação automática.** A confeitaria confere no **extrato do banco**, nunca só pelo print
    do comprovante (golpe comum: print editado ou Pix agendado que nunca cai).
 4. **Tarifa:** banco pode cobrar de pessoa física que recebe mais de 30 Pix/mês com finalidade comercial,
@@ -52,6 +52,12 @@ copy .env.example .env.local   # Linux/Mac: cp .env.example .env.local
 # preencha o .env.local
 npm run dev                    # http://localhost:3000  e  http://localhost:3000/painel
 ```
+
+### 4. Publicar na Netlify
+1. **Add new project → Import an existing project → GitHub** → escolha `gostinho-encomendas`.
+2. Antes de clicar em Deploy, em **Environment variables**, cadastre as mesmas variáveis do `.env.local`
+   (as 3 do Supabase, as 3 do Pix e o WhatsApp). A Netlify detecta o Next.js sozinha.
+3. Deploy. Cada publicação gasta 15 créditos: só dê `git push` na `main` quando estiver testado no PC.
 
 ---
 
@@ -89,7 +95,7 @@ src/lib/validacao.ts                validação do formulário do cliente (zod)
 src/lib/config.ts                   regras de negócio (sinal, antecedência, status)
 src/app/(loja)/                     área pública: cardápio, carrinho/encomenda, página do pedido com o Pix
 src/app/painel/                     login, pedidos (confirmar sinal), produtos — tudo exige admin
-src/app/api/cron/manter-ativo/      ping diário para o Supabase não pausar
+netlify/functions/manter-ativo.mts   consulta diária para o Supabase não pausar (Netlify)
 ```
 
 ---
