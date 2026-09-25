@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  /* Identidade visual do sistema de estoque (v1: css/color.css) */
+  --color-creme: #f1e4d4; /* creme da logo: fundo da página */
+  --color-cartao: #ffffff;
+  --color-texto: #333333;
+  --color-suave: #6f5b55;
+  --color-borda: #e2d0bb;
+  --color-marca: #801019; /* vinho médio */
+  --color-marca-escura: #5a020b; /* vinho da logo */
+  --color-marca-clara: #f8eee4;
+  /* Verde de ação da v1 (#1b9c85) escurecido um tom: branco sobre #1b9c85 tem
+     contraste 3,4:1, abaixo do mínimo de leitura (4,5:1). #157a6e dá 5,2:1. */
+  --color-acao: #157a6e;
+  --color-acao-escura: #0f5d54;
+  --color-sucesso: #157a6e;
+  --color-alerta: #a15c07;
+  --color-erro: #d32f2f;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-titulo: Georgia, "Times New Roman", serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-creme);
+  color: var(--color-texto);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+}
+@utility btn-primario {
+  @apply btn bg-acao text-white hover:bg-acao-escura;
+}
+@utility btn-secundario {
+  @apply btn border border-borda bg-cartao text-texto hover:bg-marca-clara;
+}
+@utility campo {
+  @apply w-full rounded-xl border border-borda bg-cartao px-3.5 py-2.5 text-base outline-none transition focus:border-marca focus:ring-2 focus:ring-marca/20;
+}
+@utility rotulo {
+  @apply mb-1 block text-sm font-medium text-texto;
+}
+@utility cartao {
+  @apply rounded-2xl border border-borda bg-cartao;
+}
