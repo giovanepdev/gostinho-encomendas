@@ -28,7 +28,8 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
     .filter((p) => itens[p.id])
     .map((p) => ({ produto: p, quantidade: itens[p.id], subtotal: p.preco * itens[p.id] }));
   const total = linhas.reduce((soma, l) => soma + l.subtotal, 0);
-  const sinal = Math.round(total * (PERCENTUAL_SINAL / 100) * 100) / 100;
+  // Em centavos, como o banco faz (evita diferença de 1 centavo por arredondamento)
+  const sinal = Math.round((Math.round(total * 100) * PERCENTUAL_SINAL) / 100) / 100;
   const itensJson = JSON.stringify(linhas.map((l) => ({ produto_id: l.produto.id, quantidade: l.quantidade })));
 
   // onSubmit (em vez de action=): o React 19 "reseta" o formulário depois de uma
@@ -110,10 +111,10 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
         )}
 
         <button type="submit" className="btn-primario w-full py-3.5 text-base" disabled={enviando || !!estado.redirecionar}>
-          {enviando || estado.redirecionar ? "Gerando pagamento…" : `Pagar sinal de ${formatarReais(sinal)}`}
+          {enviando || estado.redirecionar ? "Enviando pedido…" : "Fazer pedido"}
         </button>
         <p className="text-center text-xs text-suave">
-          Você será levado ao Mercado Pago (Pix ou cartão). Seu pedido é confirmado assim que o sinal é aprovado.
+          Na próxima tela aparece o Pix do sinal ({PERCENTUAL_SINAL}% = {formatarReais(sinal)}). O pedido é confirmado assim que o pagamento for conferido.
         </p>
       </form>
 
@@ -145,7 +146,7 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
               <dd className="font-semibold tabular-nums">{formatarReais(total)}</dd>
             </div>
             <div className="flex justify-between text-marca-escura">
-              <dt>Sinal agora ({PERCENTUAL_SINAL}%)</dt>
+              <dt>Sinal por Pix ({PERCENTUAL_SINAL}%)</dt>
               <dd className="font-semibold tabular-nums">{formatarReais(sinal)}</dd>
             </div>
             <div className="flex justify-between text-suave">

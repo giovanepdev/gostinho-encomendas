@@ -6,14 +6,11 @@ export const ANTECEDENCIA_MIN_DIAS = 2;
 /** Quantos dias para frente o cliente pode agendar. Precisa bater com o SQL (90). */
 export const ANTECEDENCIA_MAX_DIAS = 90;
 
-/** O sinal é fixo em 50%. O cálculo de verdade é feito no banco (criar_pedido). */
-export const PERCENTUAL_SINAL = 50;
-
-/** Parcelas máximas no cartão para o sinal (1 = só à vista; evita taxa de parcelamento). */
-export const MAX_PARCELAS_SINAL = 1;
-
-/** Quanto tempo o link de pagamento do Mercado Pago fica válido. */
-export const VALIDADE_LINK_PAGAMENTO_HORAS = 24;
+/**
+ * Percentual do sinal, pago por Pix na hora do pedido (decisão da confeitaria: 30% em qualquer valor).
+ * É daqui que o banco recebe o número (criar_pedido faz a conta); mudou aqui, muda em todo o site.
+ */
+export const PERCENTUAL_SINAL = 30;
 
 export const FUSO = "America/Bahia";
 

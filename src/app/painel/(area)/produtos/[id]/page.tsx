@@ -4,7 +4,7 @@ import { FormProduto } from "../FormProduto";
 import { excluirProduto } from "../../../actions";
 import { BotaoConfirmar } from "@/components/BotaoConfirmar";
 import { exigirAdmin } from "@/lib/auth";
-import { ehUuid } from "@/lib/pagamentos";
+import { ehUuid } from "@/lib/uuid";
 import { urlFoto } from "@/lib/supabase/server";
 import type { Produto } from "@/lib/tipos";
 

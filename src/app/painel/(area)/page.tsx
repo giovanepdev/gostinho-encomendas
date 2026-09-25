@@ -21,7 +21,7 @@ export default async function PainelPedidos({ searchParams }: PageProps<"/painel
 
   let consulta = supabase
     .from("pedidos")
-    .select("id, numero, cliente_nome, data_entrega, tipo_entrega, total, status, saldo_pago, sinal_pago_em")
+    .select("id, numero, cliente_nome, data_entrega, tipo_entrega, total, status, saldo_pago, sinal_pago_em, criado_em")
     .limit(200);
   if (status) consulta = consulta.in("status", status);
   consulta =
@@ -29,7 +29,11 @@ export default async function PainelPedidos({ searchParams }: PageProps<"/painel
       ? consulta.order("data_entrega", { ascending: true })
       : consulta.order("criado_em", { ascending: false });
 
-  const { data, error } = await consulta;
+  // Quantos pedidos novos esperam ela conferir o Pix (aparece como número na aba)
+  const [{ data, error }, { count: aguardando }] = await Promise.all([
+    consulta,
+    supabase.from("pedidos").select("id", { count: "exact", head: true }).eq("status", "aguardando_sinal"),
+  ]);
   if (error) throw new Error("Falha ao carregar pedidos");
   const pedidos = (data ?? []) as Pedido[];
 
@@ -50,6 +54,9 @@ export default async function PainelPedidos({ searchParams }: PageProps<"/painel
             }`}
           >
             {rotulo}
+            {chave === "aguardando_sinal" && !!aguardando && (
+              <span className="ml-1.5 rounded-full bg-alerta px-1.5 text-xs font-bold text-white">{aguardando}</span>
+            )}
           </Link>
         ))}
       </div>
@@ -73,6 +80,9 @@ export default async function PainelPedidos({ searchParams }: PageProps<"/painel
                   <span className="text-sm tabular-nums">{formatarReais(p.total)}</span>
                   <SeloStatus status={p.status} />
                   {devolverSinal && <span className="text-xs font-semibold text-erro">Devolver sinal!</span>}
+                  {p.status === "aguardando_sinal" && (
+                    <span className="text-xs text-alerta">pedido há {tempoDesde(p.criado_em)}</span>
+                  )}
                   {p.status !== "cancelado" && p.sinal_pago_em && !p.saldo_pago && (
                     <span className="text-xs text-alerta">saldo pendente</span>
                   )}
@@ -84,4 +94,13 @@ export default async function PainelPedidos({ searchParams }: PageProps<"/painel
       )}
     </>
   );
+}
+
+/** "15 min", "3 h", "2 dias" desde a data informada. */
+function tempoDesde(iso: string): string {
+  const minutos = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutos < 60) return `${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 48) return `${horas} h`;
+  return `${Math.round(horas / 24)} dias`;
 }

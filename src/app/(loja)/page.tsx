@@ -27,7 +27,7 @@ export default async function Cardapio() {
         <ol className="mt-3 space-y-1 text-sm text-texto">
           <li>1. Escolha os doces e salgados.</li>
           <li>2. Informe a data (com pelo menos {ANTECEDENCIA_MIN_DIAS} dias de antecedência).</li>
-          <li>3. Pague {PERCENTUAL_SINAL}% de sinal por Pix ou cartão. O restante, na entrega.</li>
+          <li>3. Pague {PERCENTUAL_SINAL}% de sinal por Pix. O restante, na entrega.</li>
         </ol>
       </section>
 

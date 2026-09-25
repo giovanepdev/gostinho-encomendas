@@ -60,15 +60,17 @@ create table if not exists public.pedidos (
   status           text not null default 'aguardando_sinal'
                    check (status in ('aguardando_sinal', 'confirmado', 'em_producao', 'pronto', 'entregue', 'cancelado')),
   saldo_pago       boolean not null default false,
-  mp_preference_id text,
-  mp_payment_id    text unique,
-  metodo_sinal     text,
-  sinal_pago_em    timestamptz,
+  sinal_pago_em    timestamptz, -- preenchido quando a confeitaria confirma o Pix no painel
   criado_em        timestamptz not null default now(),
   atualizado_em    timestamptz not null default now(),
   constraint endereco_obrigatorio_para_entrega
     check (tipo_entrega = 'retirada' or (endereco is not null and char_length(endereco) >= 5))
 );
+
+-- (set/2026) O sinal passou a ser por Pix direto, sem Mercado Pago: remove as colunas antigas.
+alter table public.pedidos drop column if exists mp_preference_id;
+alter table public.pedidos drop column if exists mp_payment_id;
+alter table public.pedidos drop column if exists metodo_sinal;
 
 create index if not exists pedidos_status_idx on public.pedidos (status, data_entrega);
 create index if not exists pedidos_criado_idx on public.pedidos (criado_em desc);
@@ -108,13 +110,18 @@ create trigger pedidos_atualizado_em before update on public.pedidos
 
 -- ---------------------------------------------------------------------
 -- 4. criar_pedido: cria pedido + itens numa única transação.
+--    O percentual do sinal vem do site (src/lib/config.ts → PERCENTUAL_SINAL).
 --    O PREÇO VEM DO BANCO, nunca do navegador do cliente.
 --    Só o servidor (service_role) pode chamar.
 -- ---------------------------------------------------------------------
+-- Versão antiga (sinal fixo em 50%, 3 parâmetros): remove para não sobrar duas.
+drop function if exists public.criar_pedido(jsonb, jsonb, integer);
+
 create or replace function public.criar_pedido(
   p_cliente jsonb,
   p_itens jsonb,
-  p_antecedencia_dias integer default 2
+  p_antecedencia_dias integer,
+  p_percentual_sinal numeric
 )
 returns table (pedido_id uuid, numero_pedido bigint, valor_total numeric, sinal numeric)
 language plpgsql
@@ -132,6 +139,9 @@ declare
   v_id          uuid;
   v_numero      bigint;
 begin
+  if p_percentual_sinal is null or p_percentual_sinal <= 0 or p_percentual_sinal > 100 then
+    raise exception 'PERCENTUAL_SINAL_INVALIDO' using errcode = 'P0001';
+  end if;
   if v_entrega < v_hoje + p_antecedencia_dias then
     raise exception 'DATA_ENTREGA_CEDO' using errcode = 'P0001';
   end if;
@@ -165,7 +175,7 @@ begin
     raise exception 'PRODUTO_INVALIDO' using errcode = 'P0001';
   end if;
 
-  v_sinal := round(v_total * 0.5, 2);
+  v_sinal := greatest(round(v_total * p_percentual_sinal / 100, 2), 0.01);
 
   insert into public.pedidos (
     cliente_nome, cliente_telefone, cliente_email, data_entrega,
@@ -193,8 +203,8 @@ end;
 $$;
 
 -- No Supabase, funções em "public" viram endpoint público por padrão. Fecha:
-revoke execute on function public.criar_pedido(jsonb, jsonb, integer) from public, anon, authenticated;
-grant execute on function public.criar_pedido(jsonb, jsonb, integer) to service_role;
+revoke execute on function public.criar_pedido(jsonb, jsonb, integer, numeric) from public, anon, authenticated;
+grant execute on function public.criar_pedido(jsonb, jsonb, integer, numeric) to service_role;
 
 -- ---------------------------------------------------------------------
 -- 5. RLS (Row Level Security) — a proteção de verdade.

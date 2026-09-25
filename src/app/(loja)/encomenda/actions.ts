@@ -1,7 +1,6 @@
 "use server";
 
-import { ANTECEDENCIA_MIN_DIAS } from "@/lib/config";
-import { criarCobrancaSinal } from "@/lib/mercadopago";
+import { ANTECEDENCIA_MIN_DIAS, PERCENTUAL_SINAL } from "@/lib/config";
 import { supabaseServico } from "@/lib/supabase/server";
 import { esquemaEncomenda } from "@/lib/validacao";
 
@@ -52,6 +51,7 @@ export async function criarEncomenda(_anterior: EstadoEncomenda, form: FormData)
       p_cliente: cliente,
       p_itens: itensValidos,
       p_antecedencia_dias: ANTECEDENCIA_MIN_DIAS,
+      p_percentual_sinal: PERCENTUAL_SINAL,
     })
     .single<{ pedido_id: string; numero_pedido: number; valor_total: number; sinal: number }>();
 
@@ -61,18 +61,6 @@ export async function criarEncomenda(_anterior: EstadoEncomenda, form: FormData)
     return { erro: conhecido || "Não conseguimos registrar seu pedido agora. Tente de novo em instantes." };
   }
 
-  try {
-    const cobranca = await criarCobrancaSinal({
-      id: data.pedido_id,
-      numero: data.numero_pedido,
-      valor_sinal: data.sinal,
-      cliente_nome: cliente.cliente_nome,
-      cliente_email: cliente.cliente_email,
-    });
-    await db.from("pedidos").update({ mp_preference_id: cobranca.preferenceId }).eq("id", data.pedido_id);
-    return { redirecionar: cobranca.urlPagamento };
-  } catch {
-    // Pedido já está salvo. A página do pedido tem o botão "Pagar sinal" para tentar de novo.
-    return { redirecionar: `/pedido/${data.pedido_id}?erro=pagamento` };
-  }
+  // Pedido salvo como "aguardando sinal". A página do pedido mostra o Pix com o valor exato.
+  return { redirecionar: `/pedido/${data.pedido_id}` };
 }

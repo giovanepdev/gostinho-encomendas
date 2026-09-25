@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { exigirAdmin } from "@/lib/auth";
 import { CATEGORIAS, LISTA_STATUS, type Categoria } from "@/lib/config";
-import { ehUuid } from "@/lib/pagamentos";
+import { ehUuid } from "@/lib/uuid";
 import { supabaseComSessao } from "@/lib/supabase/server";
 
 // TODAS as actions daqui começam com exigirAdmin(): server action é um endpoint
@@ -25,8 +25,32 @@ export async function alterarStatus(pedidoId: string, form: FormData) {
   const status = String(form.get("status") ?? "");
   if (!ehUuid(pedidoId) || !LISTA_STATUS.includes(status as never)) return;
 
-  const { error } = await supabase.from("pedidos").update({ status }).eq("id", pedidoId);
+  const { data: atual } = await supabase.from("pedidos").select("sinal_pago_em").eq("id", pedidoId).maybeSingle();
+  if (!atual) return;
+
+  // Mantém "sinal pago" coerente com o status:
+  // voltar para "aguardando sinal" desfaz a confirmação; avançar o pedido
+  // (confirmado, em produção, pronto, entregue) significa que ela aceitou o sinal.
+  const mudancas: { status: string; sinal_pago_em?: string | null } = { status };
+  if (status === "aguardando_sinal") mudancas.sinal_pago_em = null;
+  else if (status !== "cancelado" && !atual.sinal_pago_em) mudancas.sinal_pago_em = new Date().toISOString();
+
+  const { error } = await supabase.from("pedidos").update(mudancas).eq("id", pedidoId);
   if (error) throw new Error("Não foi possível alterar o status.");
+  revalidatePath("/painel", "layout");
+}
+
+/** Botão "Confirmar sinal recebido": ela conferiu o Pix no extrato do banco. */
+export async function confirmarSinal(pedidoId: string) {
+  const supabase = await exigirAdmin();
+  if (!ehUuid(pedidoId)) return;
+
+  const { error } = await supabase
+    .from("pedidos")
+    .update({ status: "confirmado", sinal_pago_em: new Date().toISOString() })
+    .eq("id", pedidoId)
+    .eq("status", "aguardando_sinal"); // só confirma quem ainda estava esperando
+  if (error) throw new Error("Não foi possível confirmar o sinal.");
   revalidatePath("/painel", "layout");
 }
 

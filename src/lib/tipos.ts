@@ -37,9 +37,7 @@ export type Pedido = {
   valor_sinal: number;
   status: Status;
   saldo_pago: boolean;
-  metodo_sinal: string | null;
   sinal_pago_em: string | null;
-  mp_payment_id: string | null;
   criado_em: string;
   itens_pedido?: ItemPedido[];
 };

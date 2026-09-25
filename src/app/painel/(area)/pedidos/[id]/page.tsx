@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { alterarStatus, alternarSaldoPago } from "../../../actions";
+import { alterarStatus, alternarSaldoPago, confirmarSinal } from "../../../actions";
 import { SeloStatus } from "@/components/StatusPedido";
 import { exigirAdmin } from "@/lib/auth";
-import { STATUS, TIPOS_ENTREGA } from "@/lib/config";
+import { PERCENTUAL_SINAL, STATUS, TIPOS_ENTREGA } from "@/lib/config";
 import {
   formatarDataComDia,
   formatarDataHora,
@@ -12,15 +12,9 @@ import {
   linkWhatsApp,
   numeroPedido,
 } from "@/lib/formato";
-import { ehUuid } from "@/lib/pagamentos";
+import { ehUuid } from "@/lib/uuid";
 import type { Pedido } from "@/lib/tipos";
 
-const METODOS: Record<string, string> = {
-  pix: "Pix",
-  credit_card: "Cartão de crédito",
-  debit_card: "Cartão de débito",
-  account_money: "Saldo Mercado Pago",
-};
 
 export default async function DetalhePedido({ params }: PageProps<"/painel/pedidos/[id]">) {
   const supabase = await exigirAdmin();
@@ -85,6 +79,19 @@ export default async function DetalhePedido({ params }: PageProps<"/painel/pedid
 
         <section className="cartao space-y-4 p-5 text-sm">
           <h2 className="font-titulo text-lg">Andamento</h2>
+
+          {p.status === "aguardando_sinal" && (
+            <div className="space-y-2 rounded-xl border border-alerta/40 bg-alerta/5 p-3">
+              <p>
+                Aguardando o Pix de <strong>{formatarReais(p.valor_sinal)}</strong>. Confira no <strong>extrato do banco</strong>{" "}
+                — não confie só no print do comprovante (pode ser falso ou um Pix agendado que nunca cai).
+              </p>
+              <form action={confirmarSinal.bind(null, p.id)}>
+                <button className="btn-primario w-full">Confirmar sinal recebido</button>
+              </form>
+            </div>
+          )}
+
           {/* key={p.status}: recria o select quando o status muda no servidor
               (um select "não controlado" não atualiza sozinho com o novo defaultValue) */}
           <form key={p.status} action={alterarStatus.bind(null, p.id)} className="flex gap-2">
@@ -104,11 +111,11 @@ export default async function DetalhePedido({ params }: PageProps<"/painel/pedid
               <dd className="font-semibold tabular-nums">{formatarReais(p.total)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt>Sinal (50%)</dt>
+              <dt>Sinal ({PERCENTUAL_SINAL}%)</dt>
               <dd className="tabular-nums">
                 {formatarReais(p.valor_sinal)}{" "}
                 {p.sinal_pago_em ? (
-                  <span className="text-sucesso">✓ {METODOS[p.metodo_sinal ?? ""] ?? p.metodo_sinal}</span>
+                  <span className="text-sucesso">✓ Pix recebido</span>
                 ) : (
                   <span className="text-alerta">pendente</span>
                 )}
@@ -124,7 +131,7 @@ export default async function DetalhePedido({ params }: PageProps<"/painel/pedid
           </dl>
           {p.sinal_pago_em && (
             <p className="text-xs text-suave">
-              Sinal pago em {formatarDataHora(p.sinal_pago_em)} · Mercado Pago nº {p.mp_payment_id}
+              Sinal confirmado em {formatarDataHora(p.sinal_pago_em)}
             </p>
           )}
 

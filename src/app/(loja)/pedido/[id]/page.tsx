@@ -1,30 +1,26 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { pagarSinal } from "./actions";
+import QRCode from "qrcode";
+import { CopiarTexto } from "@/components/CopiarTexto";
 import { LinhaDoTempo } from "@/components/StatusPedido";
-import { TIPOS_ENTREGA } from "@/lib/config";
+import { PERCENTUAL_SINAL, TIPOS_ENTREGA } from "@/lib/config";
+import { env } from "@/lib/env";
 import { formatarDataComDia, formatarReais, linkWhatsApp, numeroPedido } from "@/lib/formato";
-import { ehUuid, registrarPagamentoDoSinal } from "@/lib/pagamentos";
+import { gerarPixCopiaECola } from "@/lib/pix";
 import { supabaseServico } from "@/lib/supabase/server";
 import type { Pedido } from "@/lib/tipos";
+import { ehUuid } from "@/lib/uuid";
 
 export const metadata: Metadata = { title: "Seu pedido", robots: { index: false, follow: false } };
 
 const whatsapp = process.env.NEXT_PUBLIC_WHATSAPP_LOJA;
 
-export default async function PaginaPedido({ params, searchParams }: PageProps<"/pedido/[id]">) {
+export default async function PaginaPedido({ params }: PageProps<"/pedido/[id]">) {
   const { id } = await params;
-  const busca = await searchParams;
   if (!ehUuid(id)) notFound();
 
-  // Voltando do Mercado Pago: confirma o pagamento na hora, sem esperar o webhook.
-  const paymentId = typeof busca.payment_id === "string" ? busca.payment_id : null;
-  if (paymentId && paymentId !== "null") {
-    await registrarPagamentoDoSinal(paymentId).catch((e) => console.error("[pedido] confirmação no retorno", e));
-  }
-
   // A URL do pedido tem um id impossível de adivinhar (UUID): quem tem o link, vê o pedido.
-  // Por isso mostramos só o necessário (sem endereço e sem telefone completo).
+  // Por isso mostramos só o necessário (sem endereço e sem telefone).
   const { data } = await supabaseServico()
     .from("pedidos")
     .select(
@@ -38,36 +34,90 @@ export default async function PaginaPedido({ params, searchParams }: PageProps<"
   const itens = pedido.itens_pedido ?? [];
   const primeiroNome = pedido.cliente_nome.split(" ")[0];
   const saldo = Number(pedido.total) - Number(pedido.valor_sinal);
-  const statusMP = typeof busca.status === "string" ? busca.status : null;
-  const erroPagamento = busca.erro === "pagamento";
+  const numero = numeroPedido(pedido.numero);
+  const aguardando = pedido.status === "aguardando_sinal";
+
+  // Pix do sinal: valor exato + número do pedido dentro do código
+  let pix: { copiaECola: string; qrSvg: string } | null = null;
+  if (aguardando) {
+    const copiaECola = gerarPixCopiaECola({
+      chave: env.pixChave(),
+      nomeRecebedor: env.pixNomeRecebedor(),
+      cidade: env.pixCidade(),
+      valor: Number(pedido.valor_sinal),
+      identificador: `PED${String(pedido.numero).padStart(4, "0")}`,
+      descricao: `Sinal pedido ${numero}`,
+    });
+    const qrSvg = await QRCode.toString(copiaECola, {
+      type: "svg",
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: { dark: "#2b0005", light: "#ffffff" },
+    });
+    pix = { copiaECola, qrSvg };
+  }
+
+  const mensagemComprovante = `Olá! Paguei o sinal do pedido ${numero} (${formatarReais(pedido.valor_sinal)}). Segue o comprovante.`;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <p className="text-sm text-suave">Pedido {numeroPedido(pedido.numero)}</p>
-        <h1 className="font-titulo text-3xl">
-          {pedido.status === "aguardando_sinal" ? `Quase lá, ${primeiroNome}!` : `Obrigada, ${primeiroNome}!`}
+        <p className="text-sm text-suave">Pedido {numero}</p>
+        <h1 className="font-titulo text-3xl text-marca-escura">
+          {aguardando ? `Quase lá, ${primeiroNome}!` : `Obrigada, ${primeiroNome}!`}
         </h1>
       </div>
 
-      {pedido.status === "aguardando_sinal" && (
-        <div className="cartao space-y-3 border-alerta/40 bg-alerta/5 p-5">
-          {statusMP === "pending" || statusMP === "in_process" ? (
-            <p className="text-sm">
-              Seu pagamento está <strong>em processamento</strong>. Assim que o Mercado Pago aprovar, o pedido é confirmado
-              automaticamente — pode atualizar esta página daqui a pouco.
+      {pix && (
+        <section className="cartao space-y-4 p-5">
+          <div>
+            <h2 className="font-titulo text-xl">Pague o sinal por Pix</h2>
+            <p className="mt-1 text-sm text-suave">
+              Seu pedido está reservado. Para confirmar, pague o sinal de{" "}
+              <strong className="text-texto">{formatarReais(pedido.valor_sinal)}</strong> ({PERCENTUAL_SINAL}% do total).
+              O valor já vem preenchido no código.
             </p>
-          ) : (
-            <p className="text-sm">
-              {erroPagamento
-                ? "Não conseguimos abrir o pagamento agora. Seu pedido está salvo — tente de novo:"
-                : `Seu pedido está reservado. Para confirmar, pague o sinal de ${formatarReais(pedido.valor_sinal)}.`}
-            </p>
+          </div>
+
+          <div
+            className="mx-auto w-56 rounded-xl border border-borda bg-white p-2"
+            role="img"
+            aria-label={`QR Code Pix do sinal de ${formatarReais(pedido.valor_sinal)}`}
+            dangerouslySetInnerHTML={{ __html: pix.qrSvg }}
+          />
+
+          <div className="space-y-2">
+            <label htmlFor="pix-copia-e-cola" className="rotulo">
+              Ou use o Pix copia e cola:
+            </label>
+            <textarea
+              id="pix-copia-e-cola"
+              readOnly
+              rows={3}
+              value={pix.copiaECola}
+              className="campo resize-none break-all font-mono text-xs"
+            />
+            <CopiarTexto texto={pix.copiaECola} rotulo="Copiar código Pix" />
+          </div>
+
+          <ol className="space-y-1 text-sm text-suave">
+            <li>1. Abra o app do seu banco → Pix → &quot;Ler QR Code&quot; ou &quot;Pix copia e cola&quot;.</li>
+            <li>2. Confira o valor ({formatarReais(pedido.valor_sinal)}) e confirme o pagamento.</li>
+            <li>3. Envie o comprovante pelo WhatsApp. Assim que o pagamento for conferido, o pedido é confirmado.</li>
+          </ol>
+
+          {whatsapp && (
+            <a
+              className="btn-secundario w-full"
+              href={linkWhatsApp(whatsapp, mensagemComprovante)}
+              target="_blank"
+              rel="noopener"
+            >
+              Já paguei — enviar comprovante
+            </a>
           )}
-          <form action={pagarSinal.bind(null, pedido.id)}>
-            <button className="btn-primario w-full">Pagar sinal de {formatarReais(pedido.valor_sinal)}</button>
-          </form>
-        </div>
+          <p className="text-center text-xs text-suave">Guarde o link desta página para acompanhar o pedido.</p>
+        </section>
       )}
 
       {pedido.status === "confirmado" && (
@@ -111,7 +161,7 @@ export default async function PaginaPedido({ params, searchParams }: PageProps<"
             <dd className="tabular-nums">{formatarReais(pedido.total)}</dd>
           </div>
           <div className="flex justify-between">
-            <dt>Sinal (50%)</dt>
+            <dt>Sinal por Pix</dt>
             <dd className="tabular-nums">
               {formatarReais(pedido.valor_sinal)} {pedido.sinal_pago_em ? "✓ pago" : "· pendente"}
             </dd>
@@ -125,10 +175,10 @@ export default async function PaginaPedido({ params, searchParams }: PageProps<"
         </dl>
       </section>
 
-      {whatsapp && (
+      {whatsapp && !aguardando && (
         <a
           className="btn-secundario w-full"
-          href={linkWhatsApp(whatsapp, `Olá! Sobre o pedido ${numeroPedido(pedido.numero)}...`)}
+          href={linkWhatsApp(whatsapp, `Olá! Sobre o pedido ${numero}...`)}
           target="_blank"
           rel="noopener"
         >

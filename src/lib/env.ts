@@ -14,8 +14,9 @@ export const env = {
   supabaseUrl: () => obrigatoria("NEXT_PUBLIC_SUPABASE_URL"),
   supabasePublishableKey: () => obrigatoria("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"),
   supabaseSecretKey: () => obrigatoria("SUPABASE_SECRET_KEY"),
-  mpAccessToken: () => obrigatoria("MP_ACCESS_TOKEN"),
-  mpWebhookSecret: () => obrigatoria("MP_WEBHOOK_SECRET"),
-  siteUrl: () => obrigatoria("NEXT_PUBLIC_SITE_URL").replace(/\/+$/, ""),
   cronSecret: () => obrigatoria("CRON_SECRET"),
+  // Pix de quem recebe o sinal (a confeitaria)
+  pixChave: () => obrigatoria("PIX_CHAVE"),
+  pixNomeRecebedor: () => obrigatoria("PIX_NOME_RECEBEDOR"),
+  pixCidade: () => obrigatoria("PIX_CIDADE"),
 };
