@@ -6,7 +6,7 @@ import type { Produto, ProdutoVitrine } from "@/lib/tipos";
 export async function listarVitrine(): Promise<ProdutoVitrine[]> {
   const { data, error } = await supabasePublico()
     .from("produtos")
-    .select("id, nome, descricao, categoria, unidade, preco, foto_path")
+    .select("id, nome, descricao, categoria, unidade, preco, quantidade_minima, foto_path")
     .eq("ativo", true)
     .order("categoria")
     .order("nome");

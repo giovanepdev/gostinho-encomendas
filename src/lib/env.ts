@@ -18,4 +18,7 @@ export const env = {
   pixChave: () => obrigatoria("PIX_CHAVE"),
   pixNomeRecebedor: () => obrigatoria("PIX_NOME_RECEBEDOR"),
   pixCidade: () => obrigatoria("PIX_CIDADE"),
+  // Cloudflare Turnstile (anti-robô do formulário de encomenda). A chave secreta
+  // fica só no servidor; a pública (NEXT_PUBLIC_TURNSTILE_SITE_KEY) vai para o navegador.
+  turnstileSecret: () => obrigatoria("TURNSTILE_SECRET_KEY"),
 };

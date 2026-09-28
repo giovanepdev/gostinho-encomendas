@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { ANTECEDENCIA_MAX_DIAS, ANTECEDENCIA_MIN_DIAS, ORDEM_ENTREGA, type TipoEntrega } from "./config";
+import {
+  ANTECEDENCIA_MAX_DIAS,
+  ANTECEDENCIA_MIN_DIAS,
+  MAX_QUANTIDADE_POR_ITEM,
+  ORDEM_ENTREGA,
+  type TipoEntrega,
+} from "./config";
 import { formatarData, hojeMais } from "./formato";
 
 const tiposEntrega = ORDEM_ENTREGA as [TipoEntrega, ...TipoEntrega[]];
@@ -25,12 +31,6 @@ export const esquemaEncomenda = z
       .string()
       .transform(normalizarTelefone)
       .refine((d) => /^[1-9]{2}9?\d{8}$/.test(d), "Telefone inválido. Use DDD + número, ex.: (71) 99999-8888"),
-    cliente_email: z
-      .string()
-      .trim()
-      .max(120)
-      .refine((v) => v === "" || z.email().safeParse(v).success, "E-mail inválido")
-      .transform((v) => (v === "" ? null : v.toLowerCase())),
     data_entrega: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Escolha a data de entrega")
@@ -45,7 +45,12 @@ export const esquemaEncomenda = z
       .array(
         z.object({
           produto_id: z.uuid(),
-          quantidade: z.number().int().min(1).max(100),
+          // O mínimo de cada produto (ex.: 25 por sabor) é conferido no banco, que sabe o número atual.
+          quantidade: z
+            .number()
+            .int("Quantidade inválida")
+            .min(1, "Quantidade inválida")
+            .max(MAX_QUANTIDADE_POR_ITEM, `Máximo de ${MAX_QUANTIDADE_POR_ITEM} por produto pelo site. Para mais, chame no WhatsApp.`),
         }),
       )
       .min(1, "Seu carrinho está vazio")

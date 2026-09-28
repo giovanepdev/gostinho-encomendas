@@ -2,7 +2,7 @@ import Link from "next/link";
 import { FotoProduto } from "@/components/FotoProduto";
 import { exigirAdmin } from "@/lib/auth";
 import { CATEGORIAS } from "@/lib/config";
-import { formatarReais } from "@/lib/formato";
+import { formatarReais, quantidadeComUnidade } from "@/lib/formato";
 import { urlFoto } from "@/lib/supabase/server";
 import type { Produto } from "@/lib/tipos";
 
@@ -10,7 +10,7 @@ export default async function PainelProdutos() {
   const supabase = await exigirAdmin();
   const { data, error } = await supabase
     .from("produtos")
-    .select("id, nome, descricao, categoria, unidade, preco, foto_path, ativo")
+    .select("id, nome, descricao, categoria, unidade, preco, quantidade_minima, foto_path, ativo")
     .order("ativo", { ascending: false })
     .order("categoria")
     .order("nome");
@@ -43,6 +43,7 @@ export default async function PainelProdutos() {
                   <p className="truncate font-medium">{p.nome}</p>
                   <p className="text-xs text-suave">
                     {CATEGORIAS[p.categoria]} · {formatarReais(p.preco)} / {p.unidade}
+                    {p.quantidade_minima > 1 && ` · mínimo ${quantidadeComUnidade(p.quantidade_minima, p.unidade)}`}
                   </p>
                 </div>
                 {!p.ativo && <span className="text-xs font-semibold text-suave">Fora do cardápio</span>}

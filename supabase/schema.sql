@@ -31,14 +31,39 @@ create table if not exists public.produtos (
   id          uuid primary key default gen_random_uuid(),
   nome        text not null check (char_length(nome) between 2 and 80),
   descricao   text check (char_length(descricao) <= 500),
-  categoria   text not null default 'doce' check (categoria in ('doce', 'salgado', 'outro')),
+  categoria   text not null default 'doce' check (categoria in ('doce', 'salgado', 'bolo', 'outro')),
   unidade     text not null default 'unidade' check (char_length(unidade) between 1 and 20),
   preco       numeric(10, 2) not null check (preco > 0),
+  -- Pedido mínimo deste produto, na unidade de venda dele (ex.: 25 brigadeiros; bolo = 1)
+  quantidade_minima integer not null default 1 check (quantidade_minima between 1 and 1000),
   foto_path   text,
   ativo       boolean not null default true,
   criado_em   timestamptz not null default now(),
   atualizado_em timestamptz not null default now()
 );
+
+-- (set/2026) Categoria "Bolos" (cada tamanho de bolo é um produto).
+alter table public.produtos drop constraint if exists produtos_categoria_check;
+alter table public.produtos add constraint produtos_categoria_check
+  check (categoria in ('doce', 'salgado', 'bolo', 'outro'));
+
+-- (set/2026) Pedido mínimo por produto. Regra da confeitaria: doces e salgados
+-- de festa a partir de 25 unidades POR SABOR (não vale somar sabores); bolo sem mínimo.
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'produtos'
+                    and column_name = 'quantidade_minima') then
+    alter table public.produtos add column quantidade_minima integer not null default 1
+      check (quantidade_minima between 1 and 1000);
+    -- Roda UMA vez só (quando a coluna nasce), para não desfazer o que ela
+    -- ajustar depois no painel. Só mexe em doce/salgado vendido por UNIDADE:
+    -- produto vendido por cento ou kg continua com mínimo 1 (25 centos seria absurdo).
+    update public.produtos set quantidade_minima = 25
+     where categoria in ('doce', 'salgado') and unidade ~* '^\s*unid';
+  end if;
+end;
+$$;
 
 -- ---------------------------------------------------------------------
 -- 3. Pedidos e itens
@@ -50,7 +75,6 @@ create table if not exists public.pedidos (
   numero           bigint generated always as identity unique,
   cliente_nome     text not null check (char_length(cliente_nome) between 2 and 100),
   cliente_telefone text not null check (cliente_telefone ~ '^[0-9]{10,11}$'),
-  cliente_email    text check (cliente_email is null or char_length(cliente_email) <= 120),
   data_entrega     date not null,
   tipo_entrega     text not null check (tipo_entrega in ('retirada', 'uber', '99')),
   endereco         text check (char_length(endereco) <= 300),
@@ -71,9 +95,14 @@ create table if not exists public.pedidos (
 alter table public.pedidos drop column if exists mp_preference_id;
 alter table public.pedidos drop column if exists mp_payment_id;
 alter table public.pedidos drop column if exists metodo_sinal;
+-- (set/2026) E-mail do cliente era coletado e nunca usado (LGPD: não guardar o que não usa).
+alter table public.pedidos drop column if exists cliente_email;
 
 create index if not exists pedidos_status_idx on public.pedidos (status, data_entrega);
 create index if not exists pedidos_criado_idx on public.pedidos (criado_em desc);
+-- Usados pelos limites do criar_pedido (pedidos por telefone e por dia de entrega)
+create index if not exists pedidos_telefone_idx on public.pedidos (cliente_telefone, status);
+create index if not exists pedidos_entrega_idx on public.pedidos (data_entrega);
 
 create table if not exists public.itens_pedido (
   id             uuid primary key default gen_random_uuid(),
@@ -82,11 +111,17 @@ create table if not exists public.itens_pedido (
   nome_produto   text not null,
   unidade        text not null,
   preco_unitario numeric(10, 2) not null check (preco_unitario > 0),
-  quantidade     integer not null check (quantidade between 1 and 100),
+  quantidade     integer not null check (quantidade between 1 and 10000),
   subtotal       numeric(10, 2) generated always as (preco_unitario * quantidade) stored
 );
 
 create index if not exists itens_pedido_pedido_idx on public.itens_pedido (pedido_id);
+
+-- (set/2026) O teto antigo de 100 por item travava pedido de festa (ex.: 300 brigadeiros).
+-- O limite de verdade vem do site (MAX_QUANTIDADE_POR_ITEM); este é só uma trava de segurança.
+alter table public.itens_pedido drop constraint if exists itens_pedido_quantidade_check;
+alter table public.itens_pedido add constraint itens_pedido_quantidade_check
+  check (quantidade between 1 and 10000);
 
 -- atualizado_em automático
 create or replace function public.tocar_atualizado_em()
@@ -110,18 +145,30 @@ create trigger pedidos_atualizado_em before update on public.pedidos
 
 -- ---------------------------------------------------------------------
 -- 4. criar_pedido: cria pedido + itens numa única transação.
---    O percentual do sinal vem do site (src/lib/config.ts → PERCENTUAL_SINAL).
+--    As regras do negócio vêm do site (src/lib/config.ts): percentual do sinal,
+--    capacidade por dia e quanto tempo a data fica reservada sem sinal.
 --    O PREÇO VEM DO BANCO, nunca do navegador do cliente.
 --    Só o servidor (service_role) pode chamar.
+--
+--    Limites contra abuso (ficam AQUI porque ninguém consegue pular o banco):
+--      * no máximo 3 pedidos recentes aguardando sinal por telefone;
+--      * no máximo 20 pedidos criados na última hora, no site inteiro (disjuntor).
+--    Quantidade: cada produto tem seu pedido mínimo (ex.: 25 por sabor) e
+--    nenhum passa do teto do site (p_max_quantidade).
 -- ---------------------------------------------------------------------
--- Versão antiga (sinal fixo em 50%, 3 parâmetros): remove para não sobrar duas.
+-- Versões antigas: remove para não sobrar duas funções com o mesmo nome.
 drop function if exists public.criar_pedido(jsonb, jsonb, integer);
+drop function if exists public.criar_pedido(jsonb, jsonb, integer, numeric);
+drop function if exists public.criar_pedido(jsonb, jsonb, integer, numeric, integer, integer);
 
 create or replace function public.criar_pedido(
   p_cliente jsonb,
   p_itens jsonb,
   p_antecedencia_dias integer,
-  p_percentual_sinal numeric
+  p_percentual_sinal numeric,
+  p_max_pedidos_dia integer, -- null = sem limite por dia
+  p_reserva_horas integer,   -- pedido sem sinal há mais tempo que isso não ocupa vaga no dia
+  p_max_quantidade integer   -- teto de quantidade de um produto num pedido
 )
 returns table (pedido_id uuid, numero_pedido bigint, valor_total numeric, sinal numeric)
 language plpgsql
@@ -138,6 +185,11 @@ declare
   v_sinal       numeric(10, 2);
   v_id          uuid;
   v_numero      bigint;
+  v_telefone    text := p_cliente ->> 'cliente_telefone';
+  v_ocupados    integer;
+  v_reserva     integer := coalesce(p_reserva_horas, 24);
+  v_max_qtd     integer := coalesce(p_max_quantidade, 1000);
+  v_abaixo      record;
 begin
   if p_percentual_sinal is null or p_percentual_sinal <= 0 or p_percentual_sinal > 100 then
     raise exception 'PERCENTUAL_SINAL_INVALIDO' using errcode = 'P0001';
@@ -147,6 +199,36 @@ begin
   end if;
   if v_entrega > v_hoje + 90 then
     raise exception 'DATA_ENTREGA_LONGE' using errcode = 'P0001';
+  end if;
+
+  -- Um pedido de cada vez: sem isso, dois pedidos simultâneos contariam a mesma
+  -- vaga como livre e os dois passariam. A trava some sozinha no fim da transação.
+  perform pg_advisory_xact_lock(hashtext('criar_pedido'));
+
+  -- Disjuntor: se alguém disparar pedidos em massa, o site para de aceitar por
+  -- uma hora em vez de encher o banco e o painel. O WhatsApp continua funcionando.
+  if (select count(*) from public.pedidos where criado_em > now() - interval '1 hour') >= 20 then
+    raise exception 'MUITOS_PEDIDOS_AGORA' using errcode = 'P0001';
+  end if;
+
+  -- Mesmo WhatsApp com 3 pedidos recentes sem sinal: paga um antes de fazer outro.
+  if (select count(*) from public.pedidos
+       where cliente_telefone = v_telefone and status = 'aguardando_sinal'
+         and criado_em > now() - make_interval(hours => v_reserva)) >= 3 then
+    raise exception 'LIMITE_POR_TELEFONE' using errcode = 'P0001';
+  end if;
+
+  -- Capacidade do dia: conta pedidos com sinal pago (ou já em andamento) e os
+  -- recentes ainda sem sinal. Pedido esquecido sem pagar não segura a vaga para sempre.
+  if p_max_pedidos_dia is not null then
+    select count(*) into v_ocupados
+      from public.pedidos
+     where data_entrega = v_entrega
+       and status <> 'cancelado'
+       and (status <> 'aguardando_sinal' or criado_em > now() - make_interval(hours => v_reserva));
+    if v_ocupados >= p_max_pedidos_dia then
+      raise exception 'DATA_LOTADA' using errcode = 'P0001';
+    end if;
   end if;
 
   -- Junta itens repetidos (mesmo produto duas vezes vira uma linha só)
@@ -164,26 +246,47 @@ begin
     raise exception 'PEDIDO_VAZIO' using errcode = 'P0001';
   end if;
 
-  -- Todos os produtos precisam existir, estar ativos e ter quantidade válida
+  -- Todos os produtos precisam existir e estar ativos
   select count(*), sum(p.preco * t.quantidade)
     into v_qtd_validos, v_total
     from jsonb_to_recordset(v_itens) as t(produto_id uuid, quantidade integer)
-    join public.produtos p on p.id = t.produto_id and p.ativo
-   where t.quantidade between 1 and 100;
+    join public.produtos p on p.id = t.produto_id and p.ativo;
 
   if v_qtd_validos <> v_qtd_itens then
     raise exception 'PRODUTO_INVALIDO' using errcode = 'P0001';
   end if;
 
+  -- Quantidade dentro do teto do site (erro de digitação ou abuso)
+  if exists (select 1 from jsonb_to_recordset(v_itens) as t(produto_id uuid, quantidade integer)
+              where t.quantidade is null or t.quantidade < 1 or t.quantidade > v_max_qtd) then
+    raise exception 'QUANTIDADE_INVALIDA' using errcode = 'P0001';
+  end if;
+
+  -- Pedido mínimo POR PRODUTO (sabor). Itens repetidos já foram somados acima,
+  -- então 10 + 15 do mesmo brigadeiro contam 25; já 10 brigadeiros + 15 beijinhos não.
+  -- O detalhe diz qual produto, para o site explicar ao cliente.
+  select p.nome, p.quantidade_minima, p.unidade
+    into v_abaixo
+    from jsonb_to_recordset(v_itens) as t(produto_id uuid, quantidade integer)
+    join public.produtos p on p.id = t.produto_id
+   where t.quantidade < p.quantidade_minima
+   order by p.nome
+   limit 1;
+  if found then
+    raise exception 'QUANTIDADE_MINIMA' using errcode = 'P0001',
+      detail = json_build_object('produto', v_abaixo.nome,
+                                 'minimo', v_abaixo.quantidade_minima,
+                                 'unidade', v_abaixo.unidade)::text;
+  end if;
+
   v_sinal := greatest(round(v_total * p_percentual_sinal / 100, 2), 0.01);
 
   insert into public.pedidos (
-    cliente_nome, cliente_telefone, cliente_email, data_entrega,
+    cliente_nome, cliente_telefone, data_entrega,
     tipo_entrega, endereco, observacoes, total, valor_sinal
   ) values (
     p_cliente ->> 'cliente_nome',
-    p_cliente ->> 'cliente_telefone',
-    nullif(p_cliente ->> 'cliente_email', ''),
+    v_telefone,
     v_entrega,
     p_cliente ->> 'tipo_entrega',
     nullif(p_cliente ->> 'endereco', ''),
@@ -203,8 +306,8 @@ end;
 $$;
 
 -- No Supabase, funções em "public" viram endpoint público por padrão. Fecha:
-revoke execute on function public.criar_pedido(jsonb, jsonb, integer, numeric) from public, anon, authenticated;
-grant execute on function public.criar_pedido(jsonb, jsonb, integer, numeric) to service_role;
+revoke execute on function public.criar_pedido(jsonb, jsonb, integer, numeric, integer, integer, integer) from public, anon, authenticated;
+grant execute on function public.criar_pedido(jsonb, jsonb, integer, numeric, integer, integer, integer) to service_role;
 
 -- ---------------------------------------------------------------------
 -- 5. RLS (Row Level Security) — a proteção de verdade.
@@ -297,6 +400,13 @@ drop policy if exists "fotos: admin exclui" on storage.objects;
 create policy "fotos: admin exclui" on storage.objects
   for delete to authenticated
   using (bucket_id = 'produtos' and (select public.is_admin()));
+
+-- ---------------------------------------------------------------------
+-- 7. Avisa a API do Supabase (PostgREST) que o banco mudou: sem isso, logo
+--    depois de rodar este arquivo a API pode ainda não enxergar colunas novas
+--    ou a nova versão do criar_pedido, e o site dá erro até ela recarregar.
+-- ---------------------------------------------------------------------
+notify pgrst, 'reload schema';
 
 -- =====================================================================
 -- DEPOIS de rodar este arquivo:

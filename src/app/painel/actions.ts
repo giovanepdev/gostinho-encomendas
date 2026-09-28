@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { exigirAdmin } from "@/lib/auth";
-import { CATEGORIAS, LISTA_STATUS, type Categoria } from "@/lib/config";
+import { CATEGORIAS, LISTA_STATUS, MAX_QUANTIDADE_POR_ITEM, type Categoria } from "@/lib/config";
 import { ehUuid } from "@/lib/uuid";
 import { supabaseComSessao } from "@/lib/supabase/server";
 
@@ -86,6 +86,13 @@ const esquemaProduto = z.object({
     .transform((v) => Number(v.includes(",") ? v.replace(/\./g, "").replace(",", ".") : v))
     .refine((n) => Number.isFinite(n) && n > 0 && n <= 99999, "Preço inválido (ex.: 12,50)")
     .transform((n) => Math.round(n * 100) / 100),
+  // Na unidade de venda do produto: 25 brigadeiros, 1 cento, 1 bolo
+  quantidade_minima: z
+    .string()
+    .trim()
+    .regex(/^\d+$/, "Use um número inteiro (ex.: 25)")
+    .transform(Number)
+    .refine((n) => n >= 1 && n <= MAX_QUANTIDADE_POR_ITEM, `Use um número de 1 a ${MAX_QUANTIDADE_POR_ITEM}`),
   ativo: z.boolean(),
 });
 
@@ -103,6 +110,7 @@ export async function salvarProduto(
     categoria: String(form.get("categoria") ?? ""),
     unidade: String(form.get("unidade") ?? ""),
     preco: String(form.get("preco") ?? ""),
+    quantidade_minima: String(form.get("quantidade_minima") ?? ""),
     ativo: form.get("ativo") === "on",
   });
   if (!validacao.success) {

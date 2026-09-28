@@ -12,6 +12,31 @@ export const ANTECEDENCIA_MAX_DIAS = 90;
  */
 export const PERCENTUAL_SINAL = 30;
 
+/**
+ * Quantas encomendas o site aceita para o MESMO dia de entrega.
+ * Quando a data enche, o site recusa e pede para escolher outra (ou chamar no WhatsApp).
+ * Conta PEDIDOS, não tamanho: a confeitaria disse que a capacidade "depende do tamanho",
+ * então 5 é uma trava de segurança, não a capacidade exata. Pedido grande que não cabe
+ * ela cancela no painel e devolve o sinal. null = sem limite.
+ */
+export const MAX_PEDIDOS_POR_DIA: number | null = 5;
+
+/**
+ * Pedido sem sinal segura a vaga do dia só por este tempo (horas).
+ * Depois disso ele não conta mais na capacidade do dia nem no limite por telefone
+ * — continua no painel para ela cancelar.
+ */
+export const RESERVA_SEM_SINAL_HORAS = 24;
+
+/**
+ * Teto de quantidade de UM produto num pedido (na unidade de venda dele).
+ * É uma trava técnica contra erro de digitação e abuso, não a capacidade dela:
+ * o máximo real por sabor ainda não foi definido pela confeitaria.
+ * O banco recebe este número do site (criar_pedido); mudou aqui, muda em tudo.
+ * Se AUMENTAR, aumente também o limite de "quantidade_minima" no schema.sql (1000).
+ */
+export const MAX_QUANTIDADE_POR_ITEM = 1000;
+
 export const FUSO = "America/Bahia";
 
 export const NOME_LOJA = "Gostinho da Promessa";
@@ -40,10 +65,24 @@ export type TipoEntrega = keyof typeof TIPOS_ENTREGA;
 // sempre primeiro, então Object.keys(TIPOS_ENTREGA) mostraria "99" antes de "retirada".
 export const ORDEM_ENTREGA: TipoEntrega[] = ["retirada", "uber", "99"];
 
+// A ordem aqui é a ordem das seções no cardápio.
 export const CATEGORIAS = {
   doce: "Doces",
   salgado: "Salgados",
+  bolo: "Bolos",
   outro: "Outros",
 } as const;
 
 export type Categoria = keyof typeof CATEGORIAS;
+
+/**
+ * Sugestão de pedido mínimo ao CADASTRAR um produto (regra da confeitaria:
+ * doces e salgados de festa a partir de 25 unidades POR SABOR; bolo sem mínimo).
+ * O que vale é o número salvo em cada produto — ela pode mudar no painel.
+ */
+export const PEDIDO_MINIMO_PADRAO: Record<Categoria, number> = {
+  doce: 25,
+  salgado: 25,
+  bolo: 1,
+  outro: 1,
+};

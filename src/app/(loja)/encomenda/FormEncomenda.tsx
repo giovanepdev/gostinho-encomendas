@@ -5,8 +5,9 @@ import { startTransition, useActionState, useEffect, useState } from "react";
 import { criarEncomenda, type EstadoEncomenda } from "./actions";
 import { Quantidade, useCarrinho } from "@/components/Carrinho";
 import { FotoProduto } from "@/components/FotoProduto";
+import { Turnstile, type EstadoTurnstile } from "@/components/Turnstile";
 import { ORDEM_ENTREGA, PERCENTUAL_SINAL, TIPOS_ENTREGA, type TipoEntrega } from "@/lib/config";
-import { formatarReais } from "@/lib/formato";
+import { formatarReais, quantidadeComUnidade } from "@/lib/formato";
 import type { ProdutoVitrine } from "@/lib/tipos";
 
 type Props = { produtos: ProdutoVitrine[]; dataMin: string; dataMax: string };
@@ -15,6 +16,8 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
   const { itens, carregado, limpar } = useCarrinho();
   const [estado, enviar, enviando] = useActionState<EstadoEncomenda, FormData>(criarEncomenda, {});
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>("retirada");
+  // Anti-robô: o botão só libera quando a Cloudflare entrega o token (1–2 s, invisível).
+  const [antiRobo, setAntiRobo] = useState<EstadoTurnstile>("carregando");
 
   const erroCampo = estado.campos ?? {};
 
@@ -28,6 +31,9 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
     .filter((p) => itens[p.id])
     .map((p) => ({ produto: p, quantidade: itens[p.id], subtotal: p.preco * itens[p.id] }));
   const total = linhas.reduce((soma, l) => soma + l.subtotal, 0);
+  // Carrinho montado antes da regra do pedido mínimo (fica guardado no navegador):
+  // avisa e segura o envio até ajustar. O banco também confere.
+  const abaixoDoMinimo = linhas.filter((l) => l.quantidade < l.produto.quantidade_minima);
   // Em centavos, como o banco faz (evita diferença de 1 centavo por arredondamento)
   const sinal = Math.round((Math.round(total * 100) * PERCENTUAL_SINAL) / 100) / 100;
   const itensJson = JSON.stringify(linhas.map((l) => ({ produto_id: l.produto.id, quantidade: l.quantidade })));
@@ -68,9 +74,6 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
           <Campo nome="cliente_telefone" rotulo="WhatsApp (com DDD)" erro={erroCampo.cliente_telefone}>
             <input id="cliente_telefone" name="cliente_telefone" className="campo" type="tel" inputMode="tel" autoComplete="tel" placeholder="(71) 99999-8888" required />
           </Campo>
-          <Campo nome="cliente_email" rotulo="E-mail (opcional, para o comprovante)" erro={erroCampo.cliente_email}>
-            <input id="cliente_email" name="cliente_email" className="campo" type="email" autoComplete="email" />
-          </Campo>
         </fieldset>
 
         <fieldset className="cartao space-y-4 p-5">
@@ -104,14 +107,37 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
           </Campo>
         </fieldset>
 
+        {/* Fica dentro do <form>: o widget cria o campo escondido "cf-turnstile-response". */}
+        <Turnstile renovar={estado} aoMudar={setAntiRobo} />
+        {antiRobo === "erro" && (
+          <p role="alert" className="rounded-xl bg-erro/10 px-4 py-3 text-sm text-erro">
+            Não conseguimos carregar a verificação de segurança. Recarregue a página; se continuar, faça o pedido pelo WhatsApp.
+          </p>
+        )}
+
+        {abaixoDoMinimo.length > 0 && (
+          <p role="alert" className="rounded-xl bg-erro/10 px-4 py-3 text-sm text-erro">
+            Ajuste a quantidade no resumo: {abaixoDoMinimo.map((l) => l.produto.nome).join(", ")}{" "}
+            {abaixoDoMinimo.length === 1 ? "está" : "estão"} abaixo do pedido mínimo.
+          </p>
+        )}
+
         {estado.erro && (
           <p role="alert" className="rounded-xl bg-erro/10 px-4 py-3 text-sm text-erro">
             {estado.erro}
           </p>
         )}
 
-        <button type="submit" className="btn-primario w-full py-3.5 text-base" disabled={enviando || !!estado.redirecionar}>
-          {enviando || estado.redirecionar ? "Enviando pedido…" : "Fazer pedido"}
+        <button
+          type="submit"
+          className="btn-primario w-full py-3.5 text-base"
+          disabled={enviando || !!estado.redirecionar || antiRobo !== "pronto" || abaixoDoMinimo.length > 0}
+        >
+          {enviando || estado.redirecionar
+            ? "Enviando pedido…"
+            : antiRobo === "carregando"
+              ? "Verificando segurança…"
+              : "Fazer pedido"}
         </button>
         <p className="text-center text-xs text-suave">
           Na próxima tela aparece o Pix do sinal ({PERCENTUAL_SINAL}% = {formatarReais(sinal)}). O pedido é confirmado assim que o pagamento for conferido.
@@ -122,7 +148,7 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
         <div className="cartao sticky top-4 p-5">
           <h2 className="mb-4 font-titulo text-xl">Resumo</h2>
           <ul className="divide-y divide-borda">
-            {linhas.map(({ produto, subtotal }) => (
+            {linhas.map(({ produto, quantidade, subtotal }) => (
               <li key={produto.id} className="flex gap-3 py-3">
                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg">
                   <FotoProduto src={produto.foto} nome={produto.nome} sizes="56px" />
@@ -132,8 +158,13 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
                   <p className="text-xs text-suave">
                     {formatarReais(produto.preco)} / {produto.unidade}
                   </p>
-                  <div className="mt-2 flex items-center justify-between">
-                    <Quantidade produtoId={produto.id} rotulo={produto.nome} compacto />
+                  {quantidade < produto.quantidade_minima && (
+                    <p className="text-xs font-medium text-erro">
+                      Pedido mínimo: {quantidadeComUnidade(produto.quantidade_minima, produto.unidade)}
+                    </p>
+                  )}
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <Quantidade produtoId={produto.id} rotulo={produto.nome} minimo={produto.quantidade_minima} compacto />
                     <span className="text-sm font-semibold tabular-nums">{formatarReais(subtotal)}</span>
                   </div>
                 </div>

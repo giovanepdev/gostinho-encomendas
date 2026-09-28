@@ -9,6 +9,7 @@ import { formatarDataComDia, formatarReais, linkWhatsApp, numeroPedido } from "@
 import { gerarPixCopiaECola } from "@/lib/pix";
 import { supabaseServico } from "@/lib/supabase/server";
 import type { Pedido } from "@/lib/tipos";
+import { origemDoSite } from "@/lib/url";
 import { ehUuid } from "@/lib/uuid";
 
 export const metadata: Metadata = { title: "Seu pedido", robots: { index: false, follow: false } };
@@ -57,7 +58,12 @@ export default async function PaginaPedido({ params }: PageProps<"/pedido/[id]">
     pix = { copiaECola, qrSvg };
   }
 
-  const mensagemComprovante = `Olá! Paguei o sinal do pedido ${numero} (${formatarReais(pedido.valor_sinal)}). Segue o comprovante.`;
+  // O cliente só volta a esta página pelo link. Mandando o link junto na mensagem,
+  // ele fica guardado na conversa do WhatsApp dos dois lados.
+  const origem = await origemDoSite();
+  const linkDoPedido = origem ? `\nPedido: ${origem}/pedido/${pedido.id}` : "";
+  const mensagemComprovante = `Olá! Paguei o sinal do pedido ${numero} (${formatarReais(pedido.valor_sinal)}). Segue o comprovante.${linkDoPedido}`;
+  const mensagemContato = `Olá! Sobre o pedido ${numero}...${linkDoPedido}`;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -116,7 +122,9 @@ export default async function PaginaPedido({ params }: PageProps<"/pedido/[id]">
               Já paguei — enviar comprovante
             </a>
           )}
-          <p className="text-center text-xs text-suave">Guarde o link desta página para acompanhar o pedido.</p>
+          <p className="text-center text-xs text-suave">
+            Guarde o link desta página para acompanhar o pedido (ele também vai junto na mensagem do comprovante).
+          </p>
         </section>
       )}
 
@@ -178,7 +186,7 @@ export default async function PaginaPedido({ params }: PageProps<"/pedido/[id]">
       {whatsapp && !aguardando && (
         <a
           className="btn-secundario w-full"
-          href={linkWhatsApp(whatsapp, `Olá! Sobre o pedido ${numero}...`)}
+          href={linkWhatsApp(whatsapp, mensagemContato)}
           target="_blank"
           rel="noopener"
         >

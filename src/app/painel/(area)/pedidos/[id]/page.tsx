@@ -63,7 +63,6 @@ export default async function DetalhePedido({ params }: PageProps<"/painel/pedid
               {formatarTelefone(p.cliente_telefone)} (WhatsApp)
             </a>
           </p>
-          {p.cliente_email && <p>{p.cliente_email}</p>}
           <hr className="border-borda" />
           <p>
             <strong>{formatarDataComDia(p.data_entrega)}</strong> · {TIPOS_ENTREGA[p.tipo_entrega]}

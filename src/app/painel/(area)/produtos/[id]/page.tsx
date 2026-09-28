@@ -15,7 +15,7 @@ export default async function EditarProduto({ params }: PageProps<"/painel/produ
 
   const { data } = await supabase
     .from("produtos")
-    .select("id, nome, descricao, categoria, unidade, preco, foto_path, ativo")
+    .select("id, nome, descricao, categoria, unidade, preco, quantidade_minima, foto_path, ativo")
     .eq("id", id)
     .maybeSingle();
   if (!data) notFound();

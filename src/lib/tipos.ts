@@ -7,6 +7,8 @@ export type Produto = {
   categoria: Categoria;
   unidade: string;
   preco: number;
+  /** Pedido mínimo deste produto, na unidade de venda dele (ex.: 25 brigadeiros). */
+  quantidade_minima: number;
   foto_path: string | null;
   ativo: boolean;
 };
@@ -28,7 +30,6 @@ export type Pedido = {
   numero: number;
   cliente_nome: string;
   cliente_telefone: string;
-  cliente_email: string | null;
   data_entrega: string;
   tipo_entrega: TipoEntrega;
   endereco: string | null;

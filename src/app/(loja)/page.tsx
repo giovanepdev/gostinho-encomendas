@@ -3,7 +3,7 @@ import { Quantidade } from "@/components/Carrinho";
 import { FotoProduto } from "@/components/FotoProduto";
 import { ANTECEDENCIA_MIN_DIAS, CATEGORIAS, PERCENTUAL_SINAL, type Categoria } from "@/lib/config";
 import { listarVitrine } from "@/lib/catalogo";
-import { formatarReais } from "@/lib/formato";
+import { formatarReais, quantidadeComUnidade } from "@/lib/formato";
 import type { ProdutoVitrine } from "@/lib/tipos";
 
 // Página estática, regenerada no máximo 1x por hora — e na hora quando
@@ -14,9 +14,11 @@ export const revalidate = 3600;
 export default async function Cardapio() {
   const produtos = await listarVitrine();
 
+  // Seções na ordem de CATEGORIAS (Doces, Salgados, Bolos, Outros), não na alfabética do banco
   const porCategoria = new Map<Categoria, ProdutoVitrine[]>();
-  for (const p of produtos) {
-    porCategoria.set(p.categoria, [...(porCategoria.get(p.categoria) ?? []), p]);
+  for (const categoria of Object.keys(CATEGORIAS) as Categoria[]) {
+    const lista = produtos.filter((p) => p.categoria === categoria);
+    if (lista.length > 0) porCategoria.set(categoria, lista);
   }
   const precos = Object.fromEntries(produtos.map((p) => [p.id, p.preco]));
 
@@ -25,7 +27,7 @@ export default async function Cardapio() {
       <section className="mb-8 rounded-3xl bg-marca-clara px-5 py-6">
         <h1 className="font-titulo text-3xl text-marca-escura">Faça sua encomenda</h1>
         <ol className="mt-3 space-y-1 text-sm text-texto">
-          <li>1. Escolha os doces e salgados.</li>
+          <li>1. Escolha os doces, salgados e bolos.</li>
           <li>2. Informe a data (com pelo menos {ANTECEDENCIA_MIN_DIAS} dias de antecedência).</li>
           <li>3. Pague {PERCENTUAL_SINAL}% de sinal por Pix. O restante, na entrega.</li>
         </ol>
@@ -53,11 +55,18 @@ export default async function Cardapio() {
                     <h3 className="font-semibold">{p.nome}</h3>
                     {p.descricao && <p className="mt-1 line-clamp-3 text-sm text-suave">{p.descricao}</p>}
                   </div>
-                  <p className="text-lg font-semibold text-marca-escura">
-                    {formatarReais(p.preco)}
-                    <span className="text-sm font-normal text-suave"> / {p.unidade}</span>
-                  </p>
-                  <Quantidade produtoId={p.id} rotulo={p.nome} />
+                  <div>
+                    <p className="text-lg font-semibold text-marca-escura">
+                      {formatarReais(p.preco)}
+                      <span className="text-sm font-normal text-suave"> / {p.unidade}</span>
+                    </p>
+                    {p.quantidade_minima > 1 && (
+                      <p className="text-sm text-suave">
+                        Pedido mínimo: {quantidadeComUnidade(p.quantidade_minima, p.unidade)}
+                      </p>
+                    )}
+                  </div>
+                  <Quantidade produtoId={p.id} rotulo={p.nome} minimo={p.quantidade_minima} />
                 </div>
               </li>
             ))}

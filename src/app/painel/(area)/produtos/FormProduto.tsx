@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element -- prévia local (blob:), next/image não se aplica */
 import { startTransition, useActionState, useState } from "react";
 import { salvarProduto, type EstadoProduto } from "../../actions";
-import { CATEGORIAS } from "@/lib/config";
+import { CATEGORIAS, PEDIDO_MINIMO_PADRAO, type Categoria } from "@/lib/config";
 import type { Produto } from "@/lib/tipos";
 
 const LADO_MAX = 1000; // px
@@ -43,6 +43,19 @@ export function FormProduto({ produto, fotoAtual }: { produto: Produto | null; f
   const [processando, setProcessando] = useState(false);
   const erro = estado.campos ?? {};
 
+  // Pedido mínimo: num produto NOVO, acompanha a categoria (doce/salgado 25, bolo 1)
+  // até ela mexer no campo. Num produto que já existe, nunca muda sozinho.
+  const [categoria, setCategoria] = useState<Categoria>(produto?.categoria ?? "doce");
+  const [minimo, setMinimo] = useState(
+    String(produto?.quantidade_minima ?? PEDIDO_MINIMO_PADRAO[produto?.categoria ?? "doce"]),
+  );
+  const [minimoMexido, setMinimoMexido] = useState(produto !== null);
+
+  function aoMudarCategoria(nova: Categoria) {
+    setCategoria(nova);
+    if (!minimoMexido) setMinimo(String(PEDIDO_MINIMO_PADRAO[nova]));
+  }
+
   async function aoEscolherFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0];
     if (!arquivo) return;
@@ -76,6 +89,11 @@ export function FormProduto({ produto, fotoAtual }: { produto: Produto | null; f
           Nome
         </label>
         <input id="nome" name="nome" className="campo" required maxLength={80} defaultValue={produto?.nome} />
+        {categoria === "bolo" && (
+          <p className="mt-1 text-xs text-suave">
+            Cadastre um produto para cada tamanho, com o tamanho no nome (ex.: Bolo de chocolate — M, 20 fatias).
+          </p>
+        )}
         {erro.nome && <p className="mt-1 text-sm text-erro">{erro.nome}</p>}
       </div>
 
@@ -87,12 +105,18 @@ export function FormProduto({ produto, fotoAtual }: { produto: Produto | null; f
         {erro.descricao && <p className="mt-1 text-sm text-erro">{erro.descricao}</p>}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="categoria" className="rotulo">
             Categoria
           </label>
-          <select id="categoria" name="categoria" className="campo" defaultValue={produto?.categoria ?? "doce"}>
+          <select
+            id="categoria"
+            name="categoria"
+            className="campo"
+            value={categoria}
+            onChange={(e) => aoMudarCategoria(e.target.value as Categoria)}
+          >
             {Object.entries(CATEGORIAS).map(([valor, rotulo]) => (
               <option key={valor} value={valor}>
                 {rotulo}
@@ -122,7 +146,29 @@ export function FormProduto({ produto, fotoAtual }: { produto: Produto | null; f
           <input id="unidade" name="unidade" className="campo" placeholder="unidade, cento, kg" required maxLength={20} defaultValue={produto?.unidade ?? "unidade"} />
           {erro.unidade && <p className="mt-1 text-sm text-erro">{erro.unidade}</p>}
         </div>
+        <div>
+          <label htmlFor="quantidade_minima" className="rotulo">
+            Pedido mínimo
+          </label>
+          <input
+            id="quantidade_minima"
+            name="quantidade_minima"
+            className="campo"
+            inputMode="numeric"
+            required
+            value={minimo}
+            onChange={(e) => {
+              setMinimo(e.target.value.replace(/\D/g, "").slice(0, 4));
+              setMinimoMexido(true);
+            }}
+          />
+          {erro.quantidade_minima && <p className="mt-1 text-sm text-erro">{erro.quantidade_minima}</p>}
+        </div>
       </div>
+      <p className="-mt-2 text-xs text-suave">
+        O pedido mínimo é contado por sabor e na mesma unidade do “Vendido por”. Ex.: brigadeiro vendido por unidade → 25;
+        vendido por cento → 1; bolo → 1.
+      </p>
 
       <div>
         <span className="rotulo">Foto</span>
@@ -130,8 +176,15 @@ export function FormProduto({ produto, fotoAtual }: { produto: Produto | null; f
           <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-marca-clara">
             {previa && <img src={previa} alt="Prévia da foto" className="h-full w-full object-cover" />}
           </div>
-          <div className="space-y-2 text-sm">
-            <input name="foto_original" type="file" accept="image/*" onChange={aoEscolherFoto} className="block text-sm" />
+          {/* min-w-0 + w-full: sem isso o campo de arquivo empurra a página para o lado no celular */}
+          <div className="min-w-0 flex-1 space-y-2 text-sm">
+            <input
+              name="foto_original"
+              type="file"
+              accept="image/*"
+              onChange={aoEscolherFoto}
+              className="block w-full text-sm file:mr-3 file:rounded-full file:border-0 file:bg-marca-clara file:px-4 file:py-2 file:font-semibold file:text-marca-escura"
+            />
             {processando && <p className="text-suave">Preparando foto…</p>}
             {fotoAtual && !foto && (
               <label className="flex items-center gap-2 text-suave">

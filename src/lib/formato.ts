@@ -47,6 +47,19 @@ export function formatarTelefone(digitos: string): string {
   return digitos;
 }
 
+/**
+ * Quantidade com a unidade de venda no plural certo:
+ * (25, "unidade") -> "25 unidades"; (1, "cento") -> "1 cento"; (2, "porção") -> "2 porções"; (3, "kg") -> "3 kg".
+ */
+export function quantidadeComUnidade(quantidade: number, unidade: string): string {
+  const u = unidade.trim();
+  if (quantidade === 1) return `${quantidade} ${u}`;
+  let plural = u;
+  if (/ão$/i.test(u)) plural = u.replace(/ão$/i, "ões");
+  else if (/[aeiouáéêíóôú]$/i.test(u)) plural = `${u}s`;
+  return `${quantidade} ${plural}`;
+}
+
 export function numeroPedido(numero: number): string {
   return `#${String(numero).padStart(4, "0")}`;
 }
