@@ -4,6 +4,12 @@ import type { NextConfig } from "next";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL) : null;
 
 const nextConfig: NextConfig = {
+  env: {
+    // Endereço público do site, usado nos links de pré-visualização (WhatsApp, Instagram).
+    // Na Netlify, a variável URL vem preenchida no build com o endereço principal do site
+    // (o .netlify.app hoje; o domínio próprio quando existir). No seu PC, localhost.
+    NEXT_PUBLIC_SITE_URL: process.env.URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  },
   images: {
     // Fotos dos produtos vêm do Storage do Supabase
     remotePatterns: [

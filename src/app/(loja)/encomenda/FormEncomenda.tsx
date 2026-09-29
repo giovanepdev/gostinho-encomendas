@@ -7,17 +7,24 @@ import { Quantidade, useCarrinho } from "@/components/Carrinho";
 import { FotoProduto } from "@/components/FotoProduto";
 import { Turnstile, type EstadoTurnstile } from "@/components/Turnstile";
 import { ORDEM_ENTREGA, PERCENTUAL_SINAL, TIPOS_ENTREGA, type TipoEntrega } from "@/lib/config";
-import { formatarReais, quantidadeComUnidade } from "@/lib/formato";
+import { formatarDataCurta, formatarReais, quantidadeComUnidade } from "@/lib/formato";
 import type { ProdutoVitrine } from "@/lib/tipos";
 
-type Props = { produtos: ProdutoVitrine[]; dataMin: string; dataMax: string };
+type Props = { produtos: ProdutoVitrine[]; dataMin: string; dataMax: string; datasLotadas: string[] };
 
-export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
+const MSG_DATA_CHEIA = "Esse dia já está com a agenda cheia. Escolha outra data ou chame a gente no WhatsApp.";
+const MAX_DATAS_LISTADAS = 6;
+
+export function FormEncomenda({ produtos, dataMin, dataMax, datasLotadas }: Props) {
   const { itens, carregado, limpar } = useCarrinho();
   const [estado, enviar, enviando] = useActionState<EstadoEncomenda, FormData>(criarEncomenda, {});
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>("retirada");
   // Anti-robô: o botão só libera quando a Cloudflare entrega o token (1–2 s, invisível).
   const [antiRobo, setAntiRobo] = useState<EstadoTurnstile>("carregando");
+  // O calendário do celular não deixa "apagar" dias; então avisamos NA HORA em que
+  // o cliente escolhe um dia cheio, em vez de só depois de preencher tudo e enviar.
+  const [dataEntrega, setDataEntrega] = useState("");
+  const dataCheia = dataEntrega !== "" && datasLotadas.includes(dataEntrega);
 
   const erroCampo = estado.campos ?? {};
 
@@ -53,7 +60,7 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
     return (
       <div className="cartao p-8 text-center">
         <p className="text-suave">Seu carrinho está vazio.</p>
-        <Link href="/" className="btn-primario mt-4">
+        <Link href="/cardapio" className="btn-primario mt-4">
           Ver cardápio
         </Link>
       </div>
@@ -78,8 +85,25 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
 
         <fieldset className="cartao space-y-4 p-5">
           <legend className="px-1 font-titulo text-xl">Entrega</legend>
-          <Campo nome="data_entrega" rotulo="Data" erro={erroCampo.data_entrega}>
-            <input id="data_entrega" name="data_entrega" className="campo" type="date" min={dataMin} max={dataMax} required />
+          <Campo nome="data_entrega" rotulo="Data" erro={dataCheia ? MSG_DATA_CHEIA : erroCampo.data_entrega}>
+            <input
+              id="data_entrega"
+              name="data_entrega"
+              className="campo"
+              type="date"
+              min={dataMin}
+              max={dataMax}
+              required
+              aria-invalid={dataCheia || undefined}
+              aria-describedby={datasLotadas.length > 0 ? "datas-sem-vaga" : undefined}
+              onChange={(e) => setDataEntrega(e.target.value)}
+            />
+            {datasLotadas.length > 0 && (
+              <p id="datas-sem-vaga" className="mt-1 text-xs text-suave">
+                Dias sem vaga: {datasLotadas.slice(0, MAX_DATAS_LISTADAS).map(formatarDataCurta).join(", ")}
+                {datasLotadas.length > MAX_DATAS_LISTADAS && ` e mais ${datasLotadas.length - MAX_DATAS_LISTADAS}`}.
+              </p>
+            )}
           </Campo>
 
           <div>
@@ -131,7 +155,9 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
         <button
           type="submit"
           className="btn-primario w-full py-3.5 text-base"
-          disabled={enviando || !!estado.redirecionar || antiRobo !== "pronto" || abaixoDoMinimo.length > 0}
+          disabled={
+            enviando || !!estado.redirecionar || antiRobo !== "pronto" || abaixoDoMinimo.length > 0 || dataCheia
+          }
         >
           {enviando || estado.redirecionar
             ? "Enviando pedido…"
@@ -141,6 +167,13 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
         </button>
         <p className="text-center text-xs text-suave">
           Na próxima tela aparece o Pix do sinal ({PERCENTUAL_SINAL}% = {formatarReais(sinal)}). O pedido é confirmado assim que o pagamento for conferido.
+        </p>
+        <p className="text-center text-xs text-suave">
+          Seus dados são usados só para esta encomenda.{" "}
+          <Link href="/privacidade" className="underline hover:text-marca" target="_blank">
+            Veja como
+          </Link>
+          .
         </p>
       </form>
 
@@ -185,7 +218,7 @@ export function FormEncomenda({ produtos, dataMin, dataMax }: Props) {
               <dd className="tabular-nums">{formatarReais(total - sinal)}</dd>
             </div>
           </dl>
-          <Link href="/" className="mt-4 block text-center text-sm font-medium text-marca underline">
+          <Link href="/cardapio" className="mt-4 block text-center text-sm font-medium text-marca underline">
             + Adicionar mais itens
           </Link>
         </div>

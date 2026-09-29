@@ -182,7 +182,7 @@ export async function excluirProduto(produtoId: string) {
 }
 
 function revalidarVitrine() {
-  revalidatePath("/");
+  revalidatePath("/cardapio");
   revalidatePath("/encomenda");
   revalidatePath("/painel/produtos");
 }

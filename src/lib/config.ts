@@ -40,6 +40,26 @@ export const MAX_QUANTIDADE_POR_ITEM = 1000;
 export const FUSO = "America/Bahia";
 
 export const NOME_LOJA = "Gostinho da Promessa";
+export const CNPJ_LOJA = "64.827.506/0001-51";
+export const CIDADE_LOJA = "Salvador, BA";
+
+/**
+ * Links da página inicial (a que vai na bio do Instagram).
+ * Deixe "" enquanto não tiver o link: o botão some sozinho em vez de ir para lugar nenhum.
+ */
+export const LINKS = {
+  ifood: "https://www.ifood.com.br/delivery/salvador-ba/gostinho-da-promessa-tororo/f6ac9538-a2a6-4bba-893b-2586b798d451",
+  instagram: "https://www.instagram.com/gostinhodapromessa/",
+};
+
+/**
+ * Versículos da página inicial: um no topo e um no rodapé (combinado: só 2, em pontos fixos).
+ * Texto escolhido pela confeitaria. "" = não aparece.
+ */
+export const VERSICULOS = {
+  topo: { texto: "", referencia: "" },
+  rodape: { texto: "", referencia: "" },
+};
 
 export const STATUS = {
   aguardando_sinal: "Aguardando sinal",

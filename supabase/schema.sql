@@ -144,6 +144,58 @@ create trigger pedidos_atualizado_em before update on public.pedidos
   for each row execute function public.tocar_atualizado_em();
 
 -- ---------------------------------------------------------------------
+-- 3b. Regra única de "este pedido ocupa uma vaga no dia de entrega?".
+--     Usada pelo criar_pedido (para recusar data cheia) e pelo datas_lotadas
+--     (para o site mostrar as datas cheias ANTES do cliente preencher tudo).
+--     Um lugar só: se a regra mudar, as duas coisas mudam juntas.
+--     Ocupa vaga: pedido não cancelado que já tem sinal (ou está em andamento),
+--     ou que ainda espera o sinal mas foi feito há pouco (p_reserva_horas).
+-- ---------------------------------------------------------------------
+create or replace function public.ocupa_vaga(p_status text, p_criado_em timestamptz, p_reserva_horas integer)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select p_status <> 'cancelado'
+     and (p_status <> 'aguardando_sinal'
+          or p_criado_em > now() - make_interval(hours => coalesce(p_reserva_horas, 24)));
+$$;
+
+revoke execute on function public.ocupa_vaga(text, timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.ocupa_vaga(text, timestamptz, integer) to service_role;
+
+-- Datas de entrega que já bateram o limite do dia (entre p_de e p_ate).
+-- Devolve SÓ as datas: nada de nome, telefone ou quantidade de pedidos.
+create or replace function public.datas_lotadas(
+  p_de date,
+  p_ate date,
+  p_max_pedidos_dia integer, -- null = sem limite: nenhuma data fica cheia
+  p_reserva_horas integer
+)
+returns table (data date)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.data_entrega
+    from public.pedidos p
+   where p_max_pedidos_dia is not null
+     and p.data_entrega between p_de and p_ate
+     and public.ocupa_vaga(p.status, p.criado_em, p_reserva_horas)
+   group by p.data_entrega
+  having count(*) >= p_max_pedidos_dia
+   order by 1;
+$$;
+
+-- Só o servidor do site chama (com a chave de serviço). Os parâmetros vêm do
+-- config.ts; se fosse público, qualquer um passaria "limite 1" e descobriria
+-- em quais dias existe pedido.
+revoke execute on function public.datas_lotadas(date, date, integer, integer) from public, anon, authenticated;
+grant execute on function public.datas_lotadas(date, date, integer, integer) to service_role;
+
+-- ---------------------------------------------------------------------
 -- 4. criar_pedido: cria pedido + itens numa única transação.
 --    As regras do negócio vêm do site (src/lib/config.ts): percentual do sinal,
 --    capacidade por dia e quanto tempo a data fica reservada sem sinal.
@@ -224,8 +276,7 @@ begin
     select count(*) into v_ocupados
       from public.pedidos
      where data_entrega = v_entrega
-       and status <> 'cancelado'
-       and (status <> 'aguardando_sinal' or criado_em > now() - make_interval(hours => v_reserva));
+       and public.ocupa_vaga(status, criado_em, v_reserva);
     if v_ocupados >= p_max_pedidos_dia then
       raise exception 'DATA_LOTADA' using errcode = 'P0001';
     end if;

@@ -3,8 +3,16 @@ import { NOME_LOJA } from "@/lib/config";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: `${NOME_LOJA} — Encomendas`, template: `%s · ${NOME_LOJA}` },
-  description: "Doces e salgados sob encomenda. Escolha, agende a data e pague o sinal online.",
+  // Sem isto, a imagem de pré-visualização (quando o link é compartilhado no WhatsApp)
+  // sairia apontando para "localhost" no site publicado.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  title: { default: `${NOME_LOJA} — Confeitaria Afetiva`, template: `%s · ${NOME_LOJA}` },
+  description: "Doces, salgados e bolos sob encomenda em Salvador. Escolha, marque a data e pague o sinal por Pix.",
+  openGraph: {
+    siteName: NOME_LOJA,
+    locale: "pt_BR",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {

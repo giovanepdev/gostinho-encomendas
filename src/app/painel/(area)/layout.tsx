@@ -26,8 +26,8 @@ export default async function PainelLayout({ children }: LayoutProps<"/painel">)
           <Link href="/painel/produtos" className="font-medium hover:text-marca">
             Produtos
           </Link>
-          <Link href="/" className="text-suave hover:text-marca" target="_blank">
-            Ver site ↗
+          <Link href="/cardapio" className="text-suave hover:text-marca" target="_blank">
+            Ver cardápio ↗
           </Link>
           <form action={sair} className="ml-auto">
             <button className="text-suave hover:text-erro">Sair</button>

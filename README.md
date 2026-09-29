@@ -7,6 +7,20 @@ marca o restante como pago e cadastra os produtos com foto. Não tem **nenhuma**
 
 **Identidade visual:** as mesmas cores e a mesma logo do sistema de estoque (v1).
 
+**Páginas:**
+
+| Endereço | O que é |
+|---|---|
+| `/` | Página inicial — é **este** o link da bio do Instagram. Separa encomenda (site) de pronta-entrega (iFood) |
+| `/cardapio` | Cardápio e carrinho |
+| `/encomenda` | Dados do cliente e data de entrega (mostra os dias sem vaga) |
+| `/pedido/…` | Página do pedido com o Pix do sinal |
+| `/privacidade` | Aviso de privacidade (LGPD) |
+| `/painel` | Painel da confeitaria (exige login de admin) |
+
+**Links da página inicial:** iFood, Instagram e os versículos ficam em `src/lib/config.ts` (`LINKS` e `VERSICULOS`).
+Enquanto estiverem vazios (`""`), o botão ou o versículo simplesmente não aparece.
+
 **Stack:** Next.js 16 (App Router, TypeScript, Tailwind 4) · Supabase (Postgres, Auth e Storage) · Pix (BR Code gerado no próprio site) · Netlify.
 
 ---
@@ -89,6 +103,10 @@ npm run dev                    # http://localhost:3000  e  http://localhost:3000
 | **Sem e-mail do cliente** | Era coletado e nunca usado. LGPD: não guardar o que não usa. |
 | **Pedido mínimo é um campo de cada produto**, e não "toda categoria doce = 25" | Bolo não tem mínimo, e amanhã pode existir um salgado com regra diferente. Com o campo, ela resolve no painel, sem deploy. |
 | **Quantidade digitável no carrinho** | Pedido de festa tem 100, 300 unidades: ninguém clica 300 vezes no +. |
+| **Página inicial em `/` e cardápio em `/cardapio`** | O link da bio é o endereço principal do site. Quando entrar domínio próprio, ele já aponta para a porta de entrada certa, sem mudar nada. |
+| **Uma frase sob cada botão da página inicial** | São dois caminhos de compra (encomenda e iFood). Se o cliente não entender em 2 segundos qual é o dele, entra no errado e desiste. |
+| **Dias sem vaga avisados antes de enviar** | O calendário do celular não deixa "apagar" dias. Então o site lista os dias cheios e avisa na hora em que o cliente escolhe um deles. |
+| **A regra "este pedido ocupa vaga?" é uma função só no banco** (`ocupa_vaga`) | O aviso da tela e a recusa na hora de gravar usam a mesma regra. Se ela mudar, as duas mudam juntas. |
 | **Link do pedido dentro da mensagem de WhatsApp** | O cliente só volta à página do pedido pelo link (é de propósito: ninguém adivinha o pedido dos outros). Indo na mensagem, o link fica guardado na conversa. |
 | **Confirmação manual no painel** ("Confirmar sinal recebido") | Pix direto não avisa o site. A confeitaria confere no extrato e confirma com um clique. |
 | **RLS + permissões mínimas (GRANT) em todas as tabelas** | A chave *publishable* fica exposta no navegador. Sem isso, qualquer pessoa leria nome e telefone de todos os clientes. |
@@ -122,13 +140,15 @@ npm run dev                    # http://localhost:3000  e  http://localhost:3000
 
 ### Mapa do código
 ```
-supabase/schema.sql                 tabelas, função criar_pedido, RLS, permissões, bucket de fotos
+supabase/schema.sql                 tabelas, criar_pedido, ocupa_vaga/datas_lotadas, RLS, permissões, fotos
 src/proxy.ts                        renova a sessão e barra /painel sem login (1ª barreira)
 src/lib/auth.ts                     exigirAdmin() — a barreira de verdade no servidor
 src/lib/pix.ts                      monta o "Pix copia e cola" (BR Code) com CRC16
 src/lib/validacao.ts                validação do formulário do cliente (zod)
 src/lib/config.ts                   regras de negócio (sinal, antecedência, limites, pedido mínimo, status)
-src/app/(loja)/                     área pública: cardápio, carrinho/encomenda, página do pedido com o Pix
+src/app/page.tsx                    página inicial (link da bio) · opengraph-image.png: prévia no WhatsApp
+src/app/(loja)/                     cardápio, encomenda, página do pedido com o Pix, privacidade
+src/lib/agenda.ts                   datas sem vaga (mesma regra do criar_pedido)
 src/app/painel/                     login, pedidos (confirmar sinal), produtos — tudo exige admin
 netlify/functions/manter-ativo.mts   consulta diária para o Supabase não pausar (Netlify)
 ```
@@ -157,7 +177,12 @@ De ponta a ponta, com um Postgres de verdade, o PostgREST (o mesmo motor da API 
   bloqueia o envio; burlando a tela, o servidor recusa e diz qual produto; migração marca 25 só uma vez
   (rodar o schema de novo não desfaz o que ela mudou no painel);
 - painel: mínimo sugerido pela categoria, não muda sozinho em produto já cadastrado, 0 recusado;
-  categoria Bolos e ordem das seções no cardápio; link do pedido na mensagem de WhatsApp.
+  categoria Bolos e ordem das seções no cardápio; link do pedido na mensagem de WhatsApp;
+- datas lotadas: o formulário lista os dias sem vaga e avisa na hora se o cliente escolher um deles; a regra é a
+  mesma do banco (confirmado ocupa, sem sinal há mais de 24 h não ocupa, cancelado não ocupa); se a data lotar
+  enquanto o cliente preenche, o banco recusa na hora de gravar; só o servidor consegue consultar a agenda;
+- página inicial (botões escondidos quando o link está vazio, prévia para WhatsApp com o endereço do site),
+  privacidade e rodapé, tudo sem rolagem para o lado no celular.
 
 ## Fica para depois (não está feito)
 - Avisar a confeitaria quando entra pedido novo (hoje ela precisa abrir o painel).

@@ -12,7 +12,7 @@ export default function LojaLayout({ children }: LayoutProps<"/">) {
     <CarrinhoProvider>
       <header className="border-b border-borda bg-cartao">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-2">
-          <Link href="/" aria-label={`${NOME_LOJA} — início`}>
+          <Link href="/cardapio" aria-label={`${NOME_LOJA} — cardápio`}>
             <Image src={logo} alt={`${NOME_LOJA} — Confeitaria Afetiva`} priority className="h-16 w-auto sm:h-20" />
           </Link>
           <Link href="/encomenda" className="btn-secundario whitespace-nowrap">
@@ -33,6 +33,11 @@ export default function LojaLayout({ children }: LayoutProps<"/">) {
             </a>
           </p>
         )}
+        <p className="mt-3">
+          <Link href="/privacidade" className="underline hover:text-marca">
+            Privacidade
+          </Link>
+        </p>
       </footer>
     </CarrinhoProvider>
   );

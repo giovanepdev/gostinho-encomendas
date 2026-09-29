@@ -12,6 +12,15 @@ export function formatarData(isoDate: string): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/** "2026-10-03" -> "sáb 03/10" (para listas curtas, como as datas sem vaga) */
+export function formatarDataCurta(isoDate: string): string {
+  const [ano, mes, dia] = isoDate.split("-").map(Number);
+  const semana = new Date(Date.UTC(ano, mes - 1, dia, 12))
+    .toLocaleDateString("pt-BR", { weekday: "short", timeZone: "UTC" })
+    .replace(".", "");
+  return `${semana} ${String(dia).padStart(2, "0")}/${String(mes).padStart(2, "0")}`;
+}
+
 /** "2026-10-03" -> "sábado, 03/10" */
 export function formatarDataComDia(isoDate: string): string {
   const [ano, mes, dia] = isoDate.split("-").map(Number);

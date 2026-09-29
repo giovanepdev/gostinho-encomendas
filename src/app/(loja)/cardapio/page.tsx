@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { BarraCarrinho } from "@/components/BarraCarrinho";
 import { Quantidade } from "@/components/Carrinho";
 import { FotoProduto } from "@/components/FotoProduto";
@@ -6,8 +7,13 @@ import { listarVitrine } from "@/lib/catalogo";
 import { formatarReais, quantidadeComUnidade } from "@/lib/formato";
 import type { ProdutoVitrine } from "@/lib/tipos";
 
+export const metadata: Metadata = {
+  title: "Cardápio",
+  description: "Doces, salgados e bolos sob encomenda. Escolha, marque a data e pague 30% de sinal por Pix.",
+};
+
 // Página estática, regenerada no máximo 1x por hora — e na hora quando
-// sua irmã altera um produto no painel (revalidatePath("/")).
+// sua irmã altera um produto no painel (revalidatePath("/cardapio")).
 // Resultado: a vitrine abre rápido e quase não consome o banco.
 export const revalidate = 3600;
 
